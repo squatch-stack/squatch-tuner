@@ -1,0 +1,6 @@
+<!-- SPDX-License-Identifier: MIT -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <path fill="#1b1815" d="M32,4 C48,3.5 60,16 60,32 C60.5,48 48,60.5 32,60 C16,60.5 3.5,48 4,32 C3.5,16 16,4.5 32,4 Z"/>
+  <path fill="#efe7d8" d="M17,14 L25,14 L24,50 L16,50 Z M29,14 L37,14 L36,50 L28,50 Z M41,14 L49,14 L48,50 L40,50 Z"/>
+  <circle cx="47" cy="47" r="9" fill="#D4A93F"/>
+</svg>

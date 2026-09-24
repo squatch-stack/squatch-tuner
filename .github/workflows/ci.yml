@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: MIT
+# Every push and pull request: the exported code is unedited, the core and host tests pass under
+# the sanitizers, and the published WebAssembly module still reads the test tones exactly.
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Exported files match EXPORTED (edit upstream, not here)
+        run: make verify-export
+      - name: The same tuner as squatch-dsp's main branch (the source)
+        run: make check-upstream
+      - name: Unit tests (ASan + UBSan) and host tests (TSan)
+        run: |
+          # ThreadSanitizer cannot map its shadow memory with the kernel's default 32 bits of
+          # mmap randomisation on this image.
+          sudo sysctl -w vm.mmap_rnd_bits=28
+          make test CXX=clang++
+      - name: The published tuner.wasm reads the test tones
+        run: node hosts/wasm/test/core.test.mjs docs/tuner.wasm

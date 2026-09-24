@@ -1,0 +1,33 @@
+<!-- SPDX-License-Identifier: MIT -->
+<!-- The browser demo's parts of the tuner page. build.py puts each block below in place of the
+     matching slot in hosts/web/index.html; every slot there must have a block here. -->
+<!-- slot:meta -->
+<meta name="description" content="Squatch Tuner in your browser: a software strobe that reads a guitar or bass to a tenth of a cent. Audio never leaves your device.">
+<!-- /slot:meta -->
+<!-- slot:script -->
+<link rel="stylesheet" href="demo.css">
+<script type="module" src="demo.js"></script>
+<!-- /slot:script -->
+<!-- slot:home -->
+  <span class="home-links">
+    <a class="home" id="home" href="https://github.com/squatch-stack/squatch-tuner" title="Source, measurements and licence (MIT)">Source on GitHub</a>
+    <a class="home" id="home-back" data-squatch-home hidden title="Squatch home - the index of every page">&larr; Squatch home</a>
+  </span>
+<!-- /slot:home -->
+<!-- slot:sub -->
+    <span class="sub">software strobe &middot; in your browser</span>
+<!-- /slot:sub -->
+<!-- slot:source -->
+  <section class="source" aria-label="Audio input">
+    <button type="button" class="start" id="start">Start tuner</button>
+    <label class="pick"><span>Input</span><select id="input-select" disabled><option>default input</option></select></label>
+    <label class="pick" id="channel-pick" hidden><span>Channel</span><select id="channel-select"><option value="0">1</option><option value="1">2</option></select></label>
+    <p class="privacy" id="source-msg" role="status">Audio never leaves your device: the tuner runs in this page.</p>
+  </section>
+<!-- /slot:source -->
+<!-- slot:foot -->
+  <span id="engine">WebAssembly in an AudioWorklet</span>
+  <span id="audio">not started</span>
+  <span id="dsp">DSP &ndash;</span>
+  <span id="privacy">audio never leaves your device</span>
+<!-- /slot:foot -->

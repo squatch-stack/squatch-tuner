@@ -1,0 +1,168 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- The Pi bench page (served by serve.py). The browser demo is built from this same file:
+     hosts/wasm/build.py swaps each slot:NAME ... /slot:NAME block for its own (hosts/wasm/slots.html). -->
+<html lang="en" data-theme="auto" data-sq-theme="squatch-ink">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Squatch Tuner</title>
+<!-- slot:meta -->
+<meta name="description" content="Squatch Tuner, live strobe: a guitar plugged into the Pi bench, read to a tenth of a cent.">
+<!-- /slot:meta -->
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="tuner.css">
+<!-- slot:script -->
+<script type="module" src="tuner.js"></script>
+<!-- /slot:script -->
+</head>
+<body>
+<!-- Brush strokes, drawn by hand. Ticks are three tapered strokes reused with small turns, so
+     no two neighbours match; the ink-edge filter roughens the big letters like a loaded brush. -->
+<svg class="defs" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="ink-edge" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.045" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="6" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="seal-edge" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.09" numOctaves="2" seed="3" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="4"/>
+    </filter>
+    <symbol id="tick-a" viewBox="-5 -3 10 54" overflow="visible">
+      <path d="M-3.2,0 C-3.6,8 -2.4,26 -1.1,44 C-0.6,50 0.7,50 1,43 C2.2,25 3.4,9 2.9,0 C1.6,-2.2 -1.9,-2.1 -3.2,0 Z"/>
+    </symbol>
+    <symbol id="tick-b" viewBox="-5 -3 10 54" overflow="visible">
+      <path d="M-2.8,0.5 C-2.2,10 -2.9,27 -0.6,46 C-0.1,49 1.2,48.5 1.3,45 C2,28 3.6,12 3,0.2 C1.8,-2.4 -1.6,-1.8 -2.8,0.5 Z"/>
+    </symbol>
+    <symbol id="tick-c" viewBox="-5 -3 10 54" overflow="visible">
+      <path d="M-2.6,0 C-3.1,12 -1.9,30 -0.4,47 C0.2,50.5 1.1,49 1.2,46 C1.9,30 3.1,12 2.5,-0.2 C1.2,-2 -1.5,-1.9 -2.6,0 Z"/>
+      <path d="M2.9,4 C3.4,14 2.8,24 2.3,33 L2,33 C2.2,24 2.5,14 2.4,4 Z"/>
+    </symbol>
+  </defs>
+</svg>
+
+<header class="top">
+<!-- slot:home -->
+  <a class="home" id="home" data-squatch-home href="/" title="Squatch home - the index of every page">&larr; Squatch home</a>
+<!-- /slot:home -->
+  <div class="brand">
+    <span class="wordmark">Squatch Tuner</span>
+    <svg class="swash" viewBox="0 0 300 16" aria-hidden="true" preserveAspectRatio="none">
+      <path d="M4,9 C60,5 140,7 210,6 C250,5.4 280,4 297,3 C299,5 298,8 295,9 C270,10.5 240,11 200,11.2 C130,11.6 60,12.8 8,13.5 C3,13 2,10.5 4,9 Z"/>
+    </svg>
+<!-- slot:sub -->
+    <span class="sub">live strobe &middot; Pi bench &middot; <span id="input-name">Input 1</span></span>
+<!-- /slot:sub -->
+  </div>
+  <button class="theme" id="theme" type="button" aria-label="Colour theme: auto">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,3.2 C17,3 20.8,7 20.8,12 C20.9,17 17,20.9 12,20.8 C7,20.9 3.1,17 3.2,12 C3.1,7.1 7,3.3 12,3.2 Z M12,5.4 C12.3,9.8 12.2,14.4 12,18.6 C15.7,18.5 18.6,15.6 18.6,12 C18.7,8.4 15.8,5.5 12,5.4 Z"/></svg>
+    <span id="theme-label">auto</span>
+  </button>
+</header>
+
+<main class="stage" id="stage" data-view="offline">
+<!-- slot:source --><!-- /slot:source -->
+  <section class="note-block" aria-label="Note">
+    <div class="note" id="note" aria-live="off"><span class="name" id="note-name">&middot;</span><span class="acc" id="note-acc"></span><span class="oct" id="note-oct"></span></div>
+    <div class="status" id="status">connecting&hellip;</div>
+  </section>
+
+  <section class="readout" aria-label="Cents">
+    <div class="cents" id="cents"><span id="cents-num">--.-</span><span class="unit">&cent;</span></div>
+    <div class="direction" id="direction">&nbsp;</div>
+    <div class="seals">
+      <svg class="seal" id="seal-05" viewBox="0 0 100 100" role="img" aria-label="within half a cent">
+        <path class="seal-body" d="M50,6 C74,5 95,24 94,50 C95,75 75,95 49,94 C25,95 5,76 6,50 C5,26 26,7 50,6 Z"/>
+        <path class="seal-ring" d="M50,15 C69,14.5 86,30 85,50 C85.5,70 70,86 50,85 C30,86 14.5,70 15,50 C14.5,30 30,15.5 50,15 Z"/>
+        <text x="50" y="50" class="seal-num">0.5</text>
+        <text x="50" y="68" class="seal-cap">cent</text>
+      </svg>
+      <svg class="seal" id="seal-01" viewBox="0 0 100 100" role="img" aria-label="within a tenth of a cent">
+        <path class="seal-body" d="M49,5 C73,6 94,25 95,49 C94,74 74,95 51,95 C26,94 6,75 5,51 C6,27 25,5 49,5 Z"/>
+        <path class="seal-ring" d="M50,14 C70,15 85,30 86,49 C85,70 70,85.5 50,86 C30,85 14,70 14.5,50 C15,30 30,14.5 50,14 Z"/>
+        <text x="50" y="50" class="seal-num">0.1</text>
+        <text x="50" y="68" class="seal-cap">cent</text>
+      </svg>
+    </div>
+  </section>
+
+  <section class="scale-block" aria-label="Cents scale">
+    <svg class="scale" id="scale" viewBox="0 0 1000 140" role="img" aria-label="Needle on a scale from 50 cents flat to 50 cents sharp">
+      <rect class="zone" x="495.5" y="18" width="9" height="84"/>
+      <path class="baseline" d="M38,30 C160,24 330,27 500,25.5 C670,24 820,27 962,23 C966,25 964,29 958,30 C820,32.5 660,30 500,31 C340,32 170,33.5 44,34.5 C36,34 35,31 38,30 Z"/>
+      <g class="ticks">
+        <use href="#tick-a" x="-5" y="-3" width="10" height="54" transform="translate(50 30) rotate(-1.5) scale(1 1.02)"/>
+        <use href="#tick-b" x="-5" y="-3" width="10" height="54" transform="translate(95 31) rotate(1.2) scale(0.8 0.52)"/>
+        <use href="#tick-c" x="-5" y="-3" width="10" height="54" transform="translate(140 30) rotate(-0.6) scale(1 0.97)"/>
+        <use href="#tick-a" x="-5" y="-3" width="10" height="54" transform="translate(185 30.5) rotate(2) scale(0.8 0.58)"/>
+        <use href="#tick-b" x="-5" y="-3" width="10" height="54" transform="translate(230 30) rotate(0.8) scale(1 1.04)"/>
+        <use href="#tick-c" x="-5" y="-3" width="10" height="54" transform="translate(275 31) rotate(-1.8) scale(0.8 0.55)"/>
+        <use href="#tick-a" x="-5" y="-3" width="10" height="54" transform="translate(320 29.5) rotate(-0.4) scale(1 0.99)"/>
+        <use href="#tick-c" x="-5" y="-3" width="10" height="54" transform="translate(365 30) rotate(1.6) scale(0.8 0.5)"/>
+        <use href="#tick-b" x="-5" y="-3" width="10" height="54" transform="translate(410 29) rotate(-1) scale(1 1.03)"/>
+        <use href="#tick-a" x="-5" y="-3" width="10" height="54" transform="translate(455 30) rotate(0.6) scale(0.8 0.57)"/>
+        <use href="#tick-a" x="-5" y="-3" width="10" height="54" transform="translate(500 28) rotate(0.3) scale(1.5 1.45)" class="tick-zero"/>
+        <use href="#tick-b" x="-5" y="-3" width="10" height="54" transform="translate(545 30) rotate(-1.4) scale(0.8 0.54)"/>
+        <use href="#tick-c" x="-5" y="-3" width="10" height="54" transform="translate(590 29.5) rotate(0.9) scale(1 1.01)"/>
+        <use href="#tick-a" x="-5" y="-3" width="10" height="54" transform="translate(635 30) rotate(-0.7) scale(0.8 0.56)"/>
+        <use href="#tick-b" x="-5" y="-3" width="10" height="54" transform="translate(680 29) rotate(1.9) scale(1 0.98)"/>
+        <use href="#tick-c" x="-5" y="-3" width="10" height="54" transform="translate(725 30) rotate(-1.1) scale(0.8 0.53)"/>
+        <use href="#tick-a" x="-5" y="-3" width="10" height="54" transform="translate(770 29) rotate(0.5) scale(1 1.03)"/>
+        <use href="#tick-b" x="-5" y="-3" width="10" height="54" transform="translate(815 29.5) rotate(-2.1) scale(0.8 0.58)"/>
+        <use href="#tick-c" x="-5" y="-3" width="10" height="54" transform="translate(860 28.5) rotate(1.3) scale(1 1)"/>
+        <use href="#tick-a" x="-5" y="-3" width="10" height="54" transform="translate(905 28) rotate(-0.5) scale(0.8 0.52)"/>
+        <use href="#tick-b" x="-5" y="-3" width="10" height="54" transform="translate(950 27) rotate(1) scale(1 1.02)"/>
+      </g>
+      <g class="labels">
+        <text x="50" y="112">&minus;50</text><text x="140" y="112" class="wide">&minus;40</text><text x="230" y="112">&minus;30</text>
+        <text x="320" y="112" class="wide">&minus;20</text><text x="410" y="112">&minus;10</text><text x="500" y="118" class="zero">0</text>
+        <text x="590" y="112">+10</text><text x="680" y="112" class="wide">+20</text><text x="770" y="112">+30</text>
+        <text x="860" y="112" class="wide">+40</text><text x="950" y="112">+50</text>
+      </g>
+      <text x="40" y="136" class="end">&flat; flat</text>
+      <text x="960" y="136" class="end end-r">sharp &sharp;</text>
+      <g class="needle" id="needle" transform="translate(500 0)">
+        <path d="M-4.4,10 C-4.9,34 -2.6,70 -0.9,100 C-0.4,104.5 0.7,104.5 1,100 C2.7,70 4.9,34 4.3,10 C2.8,6.2 -2.9,6.4 -4.4,10 Z"/>
+        <path d="M-7.5,6 C-7.8,1.2 -2.6,-1.8 0.4,-1.5 C4.6,-1.2 7.8,1.8 7.3,6.2 C6.9,10.4 3,12.6 -0.4,12.3 C-4.4,12 -7.3,9.6 -7.5,6 Z"/>
+      </g>
+    </svg>
+  </section>
+
+  <section class="strobe-block" aria-label="Strobe">
+    <div class="strobe-wrap">
+      <canvas id="strobe" role="img" aria-label="Strobe bands: they drift right when sharp, left when flat, and stand still in tune"></canvas>
+      <div class="strobe-msg" id="strobe-msg">no signal</div>
+    </div>
+    <p class="strobe-legend"><span>&larr; drifts left: flat</span><span>still: in tune</span><span>drifts right: sharp &rarr;</span></p>
+  </section>
+
+  <section class="controls" aria-label="Settings">
+    <div class="ref">
+      <label for="a4-range">Reference <b>A4 = <output id="a4-out" for="a4-range">440</output> Hz</b></label>
+      <div class="ref-row">
+        <button type="button" id="a4-down" aria-label="Lower the reference by 1 Hz">&minus;</button>
+        <input type="range" id="a4-range" min="430" max="450" step="1" value="440">
+        <button type="button" id="a4-up" aria-label="Raise the reference by 1 Hz">+</button>
+      </div>
+    </div>
+    <div class="meter-block">
+      <div class="meter-label"><span>input level</span><span id="level-num">&ndash;</span></div>
+      <div class="meter" id="meter"><div class="meter-fill" id="meter-fill"></div><div class="meter-mark m12"></div><div class="meter-mark m6"></div></div>
+      <div class="detail" id="detail">&nbsp;</div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+<!-- slot:foot -->
+  <span id="lat">latency &ndash;</span>
+  <span id="cpu">Pi CPU &ndash;</span>
+  <span id="dsp">DSP &ndash;</span>
+  <span id="audio">&ndash;</span>
+<!-- /slot:foot -->
+</footer>
+</body>
+</html>

@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MIT
+build/
+.DS_Store
+__pycache__/
+.codegraph/
+# A local copy of the Guitar-TECHS recordings for `make results`. Never committed.
+data/

@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT
+# The "Sponsor" button on the repository page.
+github: [squatch-stack]
+# To add once these accounts exist (replace <name> and uncomment):
+# patreon: <name>
+# ko_fi: <name>
+# buy_me_a_coffee: <name>
+# liberapay: <name>
+# open_collective: <name>
+# custom: ["https://<site>/support"]

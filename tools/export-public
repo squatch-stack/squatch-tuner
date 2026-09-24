@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+"""Publish from the squatch-dsp development tree, which is the one source of truth, to the two
+public repositories, and check that they have not drifted.
+
+    tools/export-public dsp DEST            squatch-dsp: every tracked file but the private ones
+    tools/export-public tuner DEST          squatch-tuner: the tuner core, bench, hosts and the
+                                            built browser demo, in a standalone layout
+    tools/export-public PROFILE --check DEST [--no-site]
+                                            rebuild the export here and fail if DEST differs
+                                            (--no-site: skip the built demo, no Emscripten)
+    tools/export-public PROFILE --verify DEST
+                                            no source needed: fail if an exported file in DEST
+                                            was edited, added or removed since the last export
+
+The tuner is exported from the public squatch-dsp checkout, so its EXPORTED file names a public
+commit. Writing refuses uncommitted changes to tracked files, so EXPORTED names a commit that
+really holds every byte. Emscripten must be on PATH to build the demo. Standard library only.
+
+Commits in the two public repositories follow two rules, so their histories stay uniform:
+  - no Co-Authored-By trailers in commit messages;
+  - author and committer dates in UTC: commit with TZ=UTC (the instant is kept, the offset is +0000).
+"""
+import argparse
+import fnmatch
+import hashlib
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+SRC = Path(__file__).resolve().parent.parent
+MANIFEST = "EXPORTED"
+IGNORED_DIRS = {".git", "build", ".codegraph", "node_modules", "__pycache__"}
+# Tooling that stays in each working tree but never in a public one: the project-kit gates run
+# locally from an untracked copy, and llms.txt is generated per repository.
+LOCAL_ONLY = [".githooks/*", "tools/kit", "kit.toml", ".kit/*", ".gitleaks.toml", ".mcp.json", ".claude/*",
+              "llms.txt", "llms-full.txt", ".DS_Store", "*/.DS_Store"]
+
+# ---------------------------------------------------------------- profiles ----
+
+# squatch-dsp: planning notes, the private bench's scripts and old screenshots of the bench page
+# stay in the development tree.
+DSP_PRIVATE = ["PLAN.md", "hosts/pi/*", "blocks/tuner/docs/screens/tuner-*", "blocks/tuner/local.mk"]
+
+# squatch-tuner: squatch-dsp path -> squatch-tuner path; a directory maps every tracked file in it.
+TUNER_MAP = [
+    ("blocks/tuner/include/squatch/tuner", "include/squatch/tuner"),
+    ("include/squatch/dsp/latest.hpp", "include/squatch/dsp/latest.hpp"),
+    ("blocks/tuner/bench", "bench"),
+    ("blocks/tuner/tests", "tests"),
+    ("blocks/tuner/results", "results"),
+    ("blocks/tuner/RESULTS.md", "RESULTS.md"),
+    ("hosts/common", "hosts/common"),
+    ("hosts/jack", "hosts/jack"),
+    ("hosts/web", "hosts/web"),
+    ("hosts/wasm", "hosts/wasm"),
+    ("hosts/tests", "hosts/tests"),
+    ("tools/export-public", "tools/export-public"),
+]
+TUNER_SCREENS = ("blocks/tuner/docs/screens", "demo-*.jpg", "docs/screens")
+TUNER_SITE = "docs"   # the built browser demo: GitHub Pages serves this folder
+# In squatch-tuner, everything under these belongs to the export; the rest (README, LICENSE,
+# Makefile, .github) is the repository's own.
+TUNER_ROOTS = ["include", "bench", "tests", "results", "RESULTS.md", "hosts", "docs", "tools/export-public"]
+
+
+def matches(path, patterns):
+    return any(fnmatch.fnmatch(path, p) for p in patterns)
+
+
+def git(*args):
+    return subprocess.run(["git", *args], cwd=SRC, check=True, capture_output=True, text=True).stdout
+
+
+def tracked():
+    return [f for f in git("ls-files", "-z").split("\0") if f and (SRC / f).is_file()]
+
+
+def dsp_files(tmp, site):
+    del tmp, site
+    return {f: SRC / f for f in tracked() if not matches(f, DSP_PRIVATE + LOCAL_ONLY)}
+
+
+def tuner_files(tmp, site):
+    files = {}
+    everything = tracked()
+    for src, dst in TUNER_MAP:
+        for f in everything:
+            if f == src or f.startswith(src + "/"):
+                files[dst + f[len(src):]] = SRC / f
+    folder, pattern, dst = TUNER_SCREENS
+    for f in everything:
+        if f.startswith(folder + "/") and fnmatch.fnmatch(Path(f).name, pattern):
+            files[f"{dst}/{Path(f).name}"] = SRC / f
+    if site:
+        subprocess.run([sys.executable, str(SRC / "hosts/wasm/build.py"), str(tmp)], check=True, cwd=SRC,
+                       stdout=subprocess.DEVNULL)
+        files.update({f"{TUNER_SITE}/{p.name}": p for p in sorted(Path(tmp).iterdir()) if p.is_file()})
+    return files
+
+
+def walk(dest):
+    out = set()
+    for f in dest.rglob("*"):
+        rel = f.relative_to(dest)
+        if f.is_file() and not IGNORED_DIRS.intersection(rel.parts):
+            out.add(rel.as_posix())
+    return out
+
+
+def dsp_dest(dest, site):
+    del site
+    return {f for f in walk(dest) if f != MANIFEST and not matches(f, LOCAL_ONLY)}
+
+
+def tuner_dest(dest, site):
+    found = {f for f in walk(dest) if any(f == r or f.startswith(r + "/") for r in TUNER_ROOTS)}
+    found = {f for f in found if not matches(f, LOCAL_ONLY)}
+    if not site:  # the built demo's own files sit at the top of docs/
+        found = {f for f in found if not (f.startswith(f"{TUNER_SITE}/") and f.count("/") == 1)}
+    return found
+
+
+PROFILES = {"dsp": (dsp_files, dsp_dest), "tuner": (tuner_files, tuner_dest)}
+
+# ---------------------------------------------------------------- actions ----
+
+
+def sha256(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def write(profile, dest, allow_dirty):
+    head = git("rev-parse", "HEAD").strip()
+    dirty = git("status", "--porcelain", "--untracked-files=no")
+    if dirty and not allow_dirty:
+        sys.exit(f"export-public: commit first; uncommitted changes:\n{dirty}")
+    files_of, dest_of = PROFILES[profile]
+    with tempfile.TemporaryDirectory() as tmp:
+        files = dict(sorted(files_of(tmp, True).items()))
+        for stale in sorted(dest_of(dest, True) - set(files)):
+            (dest / stale).unlink()
+        for rel, src in files.items():
+            (dest / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dest / rel)
+            shutil.copymode(src, dest / rel)
+    source = "squatch-dsp" if profile == "tuner" else "the squatch-dsp development tree"
+    lines = [f"# Written by tools/export-public from {source} at {head}{' (dirty)' if dirty else ''}.",
+             "# Do not edit these files here: change them upstream and export again (see the README).",
+             *[f"{sha256(dest / rel)}  {rel}" for rel in files]]
+    (dest / MANIFEST).write_text("\n".join(lines) + "\n")
+    print(f"export-public {profile}: {len(files)} files from {head[:12]} into {dest}")
+
+
+def check(profile, dest, site):
+    files_of, dest_of = PROFILES[profile]
+    with tempfile.TemporaryDirectory() as tmp:
+        files = files_of(tmp, site)
+        problems = [f"differs: {rel}" for rel, src in sorted(files.items())
+                    if not (dest / rel).is_file() or sha256(dest / rel) != sha256(src)]
+        problems += [f"not upstream: {rel}" for rel in sorted(dest_of(dest, site) - set(files))]
+    return report(profile, "check", problems, len(files))
+
+
+def verify(profile, dest):
+    if not (dest / MANIFEST).is_file():
+        return report(profile, "verify", [f"no {MANIFEST} file"], 0)
+    listed = {}
+    for line in (dest / MANIFEST).read_text().splitlines():
+        if line and not line.startswith("#"):
+            digest, rel = line.split("  ", 1)
+            listed[rel] = digest
+    problems = [f"edited or missing: {rel}" for rel, d in listed.items()
+                if not (dest / rel).is_file() or sha256(dest / rel) != d]
+    problems += [f"not from the export: {rel}" for rel in sorted(PROFILES[profile][1](dest, True) - set(listed))]
+    return report(profile, "verify", problems, len(listed))
+
+
+def report(profile, what, problems, n):
+    for p in problems:
+        print(f"  {p}")
+    tail = f", {len(problems)} problems" if problems else ""
+    print(f"export-public {profile} --{what}: {'FAIL' if problems else 'PASS'} ({n} files{tail})")
+    return 1 if problems else 0
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(description="Publish squatch-dsp and squatch-tuner from the development tree.")
+    ap.add_argument("profile", choices=sorted(PROFILES))
+    ap.add_argument("dest", type=Path)
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--check", action="store_true")
+    mode.add_argument("--verify", action="store_true")
+    ap.add_argument("--no-site", action="store_true", help="--check without building the demo")
+    ap.add_argument("--allow-dirty", action="store_true", help="export uncommitted changes (marked dirty)")
+    args = ap.parse_args(argv)
+    dest = args.dest.resolve()
+    if args.verify:
+        return verify(args.profile, dest)
+    if not (SRC / "blocks/tuner").is_dir():
+        sys.exit("export-public: run from a squatch-dsp checkout (--verify works anywhere)")
+    if args.check:
+        return check(args.profile, dest, not args.no_site)
+    write(args.profile, dest, args.allow_dirty)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
