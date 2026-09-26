@@ -164,7 +164,7 @@ trailers, and commit dates are in UTC (`TZ=UTC git commit`).
 ## Support this work
 
 If the tuner is useful to you, you can support its development through
-[GitHub Sponsors](https://github.com/sponsors/squatch-stack).
+[GitHub Sponsors](https://github.com/sponsors/squatchlr).
 
 <!-- Other ways to support, to add when the accounts exist:
   - Patreon
