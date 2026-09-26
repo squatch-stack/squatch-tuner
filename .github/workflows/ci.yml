@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
-# Every push and pull request: the exported code is unedited, the core and host tests pass under
-# the sanitizers, and the published WebAssembly module still reads the test tones exactly.
+# Every push and pull request: the core and host tests pass under the sanitizers and the published
+# WebAssembly module reads the test tones exactly; on main, the exported code is unedited and matches squatch-dsp.
 name: CI
 on:
   push:
@@ -14,10 +14,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Exported files match EXPORTED (edit upstream, not here)
+      - name: Exported files match EXPORTED (enforced on main)
+        if: github.event_name == 'push'
         run: make verify-export
-      - name: The same tuner as squatch-dsp's main branch (the source)
+      - name: The same tuner as squatch-dsp's main branch (enforced on main)
+        if: github.event_name == 'push'
         run: make check-upstream
+      - name: Exported files this pull request edits (applied upstream on merge)
+        if: github.event_name == 'pull_request'
+        run: make verify-export || true
       - name: Unit tests (ASan + UBSan) and host tests (TSan)
         run: |
           # ThreadSanitizer cannot map its shadow memory with the kernel's default 32 bits of

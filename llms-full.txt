@@ -7,9 +7,12 @@ Every file linked from [llms.txt](llms.txt), inlined in the same order (director
 ## Contents
 
 - README.md (Start here: Squatch Tuner)
+- CONTRIBUTING.md (Start here: Contributing to squatch-tuner)
 - RESULTS.md (Start here: Squatch Tuner: measured results)
+- .github/pull_request_template.md (Docs: .github/pull_request_template.md)
 - .github/workflows/ci.yml (Build and run: .github/workflows/ci.yml)
 - .github/workflows/pages.yml (Build and run: .github/workflows/pages.yml)
+- .github/workflows/quality.yml (Build and run: .github/workflows/quality.yml)
 - Makefile (Build and run: Makefile)
 - results/perf.md (Optional: results/perf.md)
 - results/poly.md (Optional: results/poly.md)
@@ -205,6 +208,66 @@ If the tuner is useful to you, you can support its development through
 ## Licence
 
 MIT, © 2026 Squatch Stack. See [LICENSE](LICENSE).
+
+================================================================================
+FILE: CONTRIBUTING.md    [Start here: Contributing to squatch-tuner]
+================================================================================
+
+<!-- SPDX-License-Identifier: MIT -->
+# Contributing to squatch-tuner
+
+Thank you for helping. Every change comes in as a pull request and is reviewed before it lands.
+
+## What belongs here
+
+squatch-tuner is a **library**: the Squatch Tuner's core (`include/squatch/tuner`), its tests and
+benchmarks, the thin hosts that show it working (the browser demo, the live JACK tuner), and the
+published demo in `docs/`. Applications and device firmware do not belong here. If you are unsure
+whether something fits, open an issue first.
+
+## A good pull request
+
+- **One change.** A fix, a feature, a refactor or a documentation change, not several.
+  Refactors go in their own pull request.
+- **Small.** Aim for under 400 changed lines. Over 1000 needs a reason in the description (a
+  maintainer then adds the `large-change` label). `docs/`, `results/` and `EXPORTED` are not
+  counted.
+- **Tested.** A change in what the tuner reads comes with a test or a measured result
+  (`make results`) that shows it.
+- **Checked locally.** `make lint` and `make test` run what CI runs.
+- **Commit subjects** follow [Conventional Commits](https://www.conventionalcommits.org/):
+  `type(scope): summary`, at most 72 characters, with type one of `feat fix docs chore ci build
+  test refactor perf style revert`. No `fixup!`, `squash!` or `WIP` commits in the final branch.
+
+## What the checks look at
+
+On every pull request (`.github/workflows/quality.yml` and `ci.yml`):
+
+| Check | Limit |
+|---|---|
+| Cyclomatic complexity per function (`make lint`, lizard) | at most 10 |
+| Function length | at most 60 lines |
+| Parameters per function | at most 5 |
+| Shell scripts (shellcheck) | no findings |
+| Commit subjects (`tools/pr-shape`) | the format above |
+| Pull request size (`tools/pr-shape`) | notice over 400 lines, fails over 1000 without `large-change` |
+| Unit and host tests | pass under ASan + UBSan and TSan |
+| The published `docs/tuner.wasm` | reads the test tones exactly |
+
+## Your machine
+
+This repository installs nothing on your machine and changes no configuration: no hooks to
+install, no package managers, no downloads at build time. `make lint` needs `lizard`; the rest
+needs a C++17 compiler and make.
+
+## How a pull request lands
+
+The tuner is developed inside [squatch-dsp](https://github.com/squatch-stack/squatch-dsp) and
+published here. Once a pull request is approved, a maintainer applies it there and it comes back
+here in the next publish, credited to you. `EXPORTED` lists every published file; a pull request
+may edit them, and CI reports which, but it only enforces `EXPORTED` on `main`.
+
+Contributions are accepted under the MIT licence of this repository.
 
 ================================================================================
 FILE: RESULTS.md    [Start here: Squatch Tuner: measured results]
@@ -494,13 +557,33 @@ make results GUITAR_TECHS=/path/to/guitar-techs
 ```
 
 ================================================================================
+FILE: .github/pull_request_template.md    [Docs: .github/pull_request_template.md]
+================================================================================
+
+<!-- SPDX-License-Identifier: MIT -->
+<!-- One change per pull request. See CONTRIBUTING.md. -->
+
+## What and why
+
+<!-- What this changes, and why it is needed. Link the issue if there is one. -->
+
+## How it was checked
+
+<!-- The test that covers it (and fails without it), and anything measured or listened to. -->
+
+- [ ] One change: no unrelated edits, refactors in their own pull request
+- [ ] Under 400 changed lines, or the reason it cannot be split is given above
+- [ ] `make lint` and `make test` pass
+- [ ] Commit subjects are `type(scope): summary`, at most 72 characters
+
+================================================================================
 FILE: .github/workflows/ci.yml    [Build and run: .github/workflows/ci.yml]
 ================================================================================
 
 ```yaml
 # SPDX-License-Identifier: MIT
-# Every push and pull request: the exported code is unedited, the core and host tests pass under
-# the sanitizers, and the published WebAssembly module still reads the test tones exactly.
+# Every push and pull request: the core and host tests pass under the sanitizers and the published
+# WebAssembly module reads the test tones exactly; on main, the exported code is unedited and matches squatch-dsp.
 name: CI
 on:
   push:
@@ -514,10 +597,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Exported files match EXPORTED (edit upstream, not here)
+      - name: Exported files match EXPORTED (enforced on main)
+        if: github.event_name == 'push'
         run: make verify-export
-      - name: The same tuner as squatch-dsp's main branch (the source)
+      - name: The same tuner as squatch-dsp's main branch (enforced on main)
+        if: github.event_name == 'push'
         run: make check-upstream
+      - name: Exported files this pull request edits (applied upstream on merge)
+        if: github.event_name == 'pull_request'
+        run: make verify-export || true
       - name: Unit tests (ASan + UBSan) and host tests (TSan)
         run: |
           # ThreadSanitizer cannot map its shadow memory with the kernel's default 32 bits of
@@ -567,6 +655,66 @@ jobs:
           path: docs
       - id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+```
+
+================================================================================
+FILE: .github/workflows/quality.yml    [Build and run: .github/workflows/quality.yml]
+================================================================================
+
+```yaml
+# SPDX-License-Identifier: MIT
+# Every pull request and push: complexity limits, shell scripts, and (on pull requests) commit
+# subjects and size. The limits are in CONTRIBUTING.md; nothing here installs anything unpinned.
+name: Quality
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  complexity:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install lizard (pinned by hash)
+        run: python3 -m pip install --user --require-hashes --no-deps -r tools/requirements-ci.txt
+      - name: Complexity, length and parameters per function (make lint)
+        run: PATH="$HOME/.local/bin:$PATH" make lint
+
+  shell:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: shellcheck every shell script (by extension or shebang)
+        run: |
+          mapfile -t scripts < <(git ls-files | while read -r f; do
+            case "$f" in *.sh) echo "$f"; continue ;; esac
+            head -n1 -- "$f" 2>/dev/null | grep -qE '^#!.*\b(ba|da|k)?sh\b' && echo "$f"
+          done)
+          echo "${#scripts[@]} shell scripts"
+          [ "${#scripts[@]}" -eq 0 ] || shellcheck "${scripts[@]}"
+
+  pull-request:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Commit subjects and size (tools/pr-shape)
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
+        run: |
+          args=()
+          for l in $LABELS; do args+=(--label "$l"); done
+          python3 tools/pr-shape "$BASE" "$HEAD" "${args[@]}"
 ```
 
 ================================================================================
@@ -1035,3 +1183,5 @@ FILE: tools/    [Optional: tools/]
 Directory listing (tracked files):
 
 - tools/export-public
+- tools/pr-shape
+- tools/requirements-ci.txt
